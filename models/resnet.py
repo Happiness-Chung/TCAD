@@ -117,7 +117,8 @@ class ResNet(nn.Module):
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         
         self.gradients = None
-
+        
+        
     def activations_hook(self, grad):
         self.gradients = grad
     

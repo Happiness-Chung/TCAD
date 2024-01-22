@@ -70,6 +70,7 @@ parser.add_argument('--experiment_name', default='231210_floss_c1', type=str, he
 parser.add_argument('--wandb_project', default='TrustCAD', type=str, help='your wandb project name (you have to change)')
 parser.add_argument('--layer_depth', default=1, type=int, help='depth of last layer')
 parser.add_argument('--seed', default=1, metavar='BS', type=int, help='seed for split file', choices=[1,2,3])
+parser.add_argument('--loss_tf', action='store_true', help='true attention map vs. false attention map') 
 
 
 
@@ -125,6 +126,10 @@ def main():
         criterion = nn.CrossEntropyLoss().cuda()
     elif args.dataset == 'CheXpert' or args.dataset == 'MIMIC' or args.dataset == 'NIH':
         criterion = torch.nn.BCEWithLogitsLoss().cuda()
+        if args.loss_tf:
+            loss_tf_func = torch.nn.L1Loss().cuda()
+        else:
+            loss_tf_func = None
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                             momentum=args.momentum,
@@ -154,7 +159,7 @@ def main():
     # Data loading code
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=kwargs.get('batch-size'), shuffle=False, num_workers=args.workers, pin_memory=True)
     if args.evaluate:
-        validate(val_loader, model, criterion, unorm, -1, PATH)
+        validate(val_loader, model, criterion, loss_tf_func, unorm, -1, PATH)
         return
     PATH = os.path.join('./checkpoints/SF', args.dataset, args.prefix)
     os.makedirs(PATH, exist_ok=True)
@@ -171,12 +176,12 @@ def main():
         
         # train for one epoch
         if args.mask == True:
-            train(train_loader, model, criterion, optimizer, epoch, result_dir, mask_model)
+            train(train_loader, model, criterion, loss_tf_func, optimizer, epoch, result_dir, mask_model)
         else:
-            train(train_loader, model, criterion, optimizer, epoch, result_dir)
+            train(train_loader, model, criterion, loss_tf_func, optimizer, epoch, result_dir)
 
         # evaluate on validation set
-        prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
+        prec1 = validate(val_loader, model, criterion, loss_tf_func, unorm, epoch, PATH, result_dir)
         
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
@@ -193,7 +198,7 @@ def main():
 
         torch.save(model.state_dict(), result_dir + "/model.pth" )
 
-def train(train_loader, model, criterion, optimizer, epoch, dir, mask_model = None):
+def train(train_loader, model, criterion, loss_tf_func, optimizer, epoch, dir, mask_model = None):
 
     global result_dir
     global probs 
@@ -220,7 +225,6 @@ def train(train_loader, model, criterion, optimizer, epoch, dir, mask_model = No
     total_f = 0
 
     sigmoid =  nn.Sigmoid()
-
     # switch to train mode
     model.train()
 
@@ -249,6 +253,10 @@ def train(train_loader, model, criterion, optimizer, epoch, dir, mask_model = No
             output, l1, l2, l3, hmaps_t, hmaps_f, f, d = model(inputs, target)
             total_f += f
             loss = criterion(output, target) + f
+            if args.loss_tf:
+                true = torch.stack(hmaps_t, dim=0)
+                false = torch.stack(hmaps_f, dim=0)
+                loss_tf = -1 * loss_tf_func(true, false)
 
         
         # save_cam(inputs[0], hmaps_t, i*len(inputs))
@@ -264,6 +272,8 @@ def train(train_loader, model, criterion, optimizer, epoch, dir, mask_model = No
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(args.dataset, output.data, target, topk=(1, 5))
+        if args.loss_tf:
+            loss = loss+loss_tf
         losses.update(loss.item(), inputs.size(0))
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))
@@ -354,7 +364,7 @@ def vis_heatmaps(hmaps, inputs, unnorm, epoch, path):
         img_tensors.append(transforms.ToTensor()(res))
     save_image(img_tensors, '{}/{}.png'.format(path, epoch), nrow=8)
 
-def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
+def validate(val_loader, model, criterion, loss_tf_func, unorm, epoch, PATH, dir):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -391,6 +401,10 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
         else:
             output, l1, l2, l3, hmap_t, hmaps_f, f, h = model(inputs, target)
             loss = criterion(output, target)+l1+l2+l3+f
+            if args.loss_tf:
+                true = torch.stack(hmaps_t, dim=0)
+                false = torch.stack(hmaps_f, dim=0)
+                loss_tf = -1 * loss_tf_func(true, false)
 
         true_overlays = []
         false_overlays = []
@@ -407,6 +421,8 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(args.dataset, output.data, target, topk=(1, 5))
+        if args.loss_tf:
+            loss = loss+loss_tf
         losses.update(loss.item(), inputs.size(0))
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))

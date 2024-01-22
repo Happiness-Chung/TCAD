@@ -321,6 +321,7 @@ class SFOCUS(nn.Module):
 
                     return A_t_la, A_conf_la
             else:
+                ## not test but yes E-CNN! ##
                 if self.plus == True:
                     sigmoid = nn.Sigmoid()
                     
@@ -356,9 +357,10 @@ class SFOCUS(nn.Module):
                     #forward_feature = torch.zeros((128, last_size, last_size), dtype=torch.float32).cuda()
                     backward_feature = torch.zeros((self.layer_depth, last_size, last_size), dtype=torch.float32).cuda()
                     forward_feature = torch.zeros((self.layer_depth, last_size, last_size), dtype=torch.float32).cuda()
-                    
+                                        
                     self.populate_grads(sigmoid(logits), labels)
-
+                    
+                    ## TRUE LABEL
                     
                     for i in range(len(labels)):  
                         cnt = 0  
@@ -397,7 +399,9 @@ class SFOCUS(nn.Module):
                     L_ac_in = 0
                     L_as_la = 0
                     L_as_in = 0
-
+                    
+                    
+                    ## FALSE LABEL
                     labels = torch.ones((len(labels), self.num_classes), dtype=torch.float32).cuda() - labels
 
                     # cnt = 0    
@@ -518,6 +522,10 @@ class SFOCUS(nn.Module):
         if self.plus == False:
             return logits, L_as_la, L_as_in, L_ac_in, A_t_la, A_conf_la
         else:
+            #print(len(A_t_la)) # batch size
+            #print(A_t_la[0].shape) # (1, 19, 19)
+            #print(len(A_conf_la)) # batch size
+            #print(A_conf_la[0].shape) # (1, 19, 19)
             return logits, L_as_la, L_as_in, L_ac_in, A_t_la, A_conf_la, bw_loss, h_score
         
       
