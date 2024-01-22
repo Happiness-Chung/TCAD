@@ -69,9 +69,9 @@ best_prec1 = 0
 parser.add_argument('--base_path', default = 'History', type=str, help='base path for Stella (you have to change)')
 parser.add_argument('--wandb_key', default='c07987db95186aade1f1dd62754c86b4b6db5af6', type=str, help='wandb key for Stella (you have to change). You can get it from https://wandb.ai/authorize')
 parser.add_argument('--wandb_mode', default='online', type=str, choices=['online', 'offline'], help='tracking with wandb or turn it off')
-parser.add_argument('--wandb_user', default='hphp', type=str, help='your wandb username (you have to change)')
+parser.add_argument('--wandb_user', default='stellasybae', type=str, help='your wandb username (you have to change)')
 parser.add_argument('--experiment_name', default='Pretraining Strategy', type=str, help='your wandb experiment name (you have to change)')
-parser.add_argument('--wandb_project', default='ICASC++', type=str, help='your wandb project name (you have to change)')
+parser.add_argument('--wandb_project', default='TrustCAD', type=str, help='your wandb project name (you have to change)')
 
 
 global result_dir

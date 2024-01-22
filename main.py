@@ -38,7 +38,7 @@ parser.add_argument('--mask', default= False, type=str,
                     help='(2) whether apply icasc++')
 parser.add_argument('--ngpu', default=1, type=int, metavar='G',
                     help='number of gpus to use')
-parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default= 4, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -55,20 +55,22 @@ parser.add_argument('--weight_decay', '--wd', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=100, type=int,
                     metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default=True, type=str, metavar='PATH',
+parser.add_argument('--resume', default=False, type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)') # 설명상 default가 None이라서 그렇게 바꿨습니다
-parser.add_argument("--seed", type=int, default=1234, metavar='BS', help='input batch size for training (default: 64)')
 parser.add_argument("--prefix", default="Result", type=str, required=False, metavar='PFX', help='prefix for logging & checkpoint saving')
 parser.add_argument('--evaluate',default=False, dest='evaluate', action='store_true', help='evaluation only')
 best_prec1 = 0
 
 # Stella added
 parser.add_argument('--base_path', default = 'History', type=str, help='base path for Stella (you have to change)')
-parser.add_argument('--wandb_key', default='c07987db95186aade1f1dd62754c86b4b6db5af6', type=str, help='wandb key for Stella (you have to change). You can get it from https://wandb.ai/authorize')
+parser.add_argument('--wandb_key', default='108101f4b9c3e31a235aa58307d1c6b548cfb54a', type=str, help='wandb key for Stella (you have to change). You can get it from https://wandb.ai/authorize')
 parser.add_argument('--wandb_mode', default='online', type=str, choices=['online', 'offline'], help='tracking with wandb or turn it off')
-parser.add_argument('--wandb_user', default='hphp', type=str, help='your wandb username (you have to change)')
+parser.add_argument('--wandb_user', default='stellasybae', type=str, help='your wandb username (you have to change)')
 parser.add_argument('--experiment_name', default='231210_floss_c1', type=str, help='your wandb experiment name (you have to change)')
-parser.add_argument('--wandb_project', default='ICASC++', type=str, help='your wandb project name (you have to change)')
+parser.add_argument('--wandb_project', default='TrustCAD', type=str, help='your wandb project name (you have to change)')
+parser.add_argument('--layer_depth', default=1, type=int, help='depth of last layer')
+parser.add_argument('--seed', default=1, metavar='BS', type=int, help='seed for split file', choices=[1,2,3])
+
 
 
 global result_dir
@@ -77,7 +79,6 @@ global gt
 global k
 
 def main():
-
     def build_lrfn(lr_start=0.000002, lr_max=0.00010, 
                lr_min=0, lr_rampup_epochs=8, 
                lr_sustain_epochs=0, lr_exp_decay=.8):
@@ -105,7 +106,7 @@ def main():
     wandb.init(project=args.wandb_project, entity=args.wandb_user, reinit=True, name=args.experiment_name)
 
     now = datetime.now()
-    result_dir = os.path.join(base_path, "{}_{}H".format(now.date(), str(now.hour)))
+    result_dir = os.path.join(base_path, 'results', args.experiment_name) #"{}_{}H".format(now.date(), str(now.hour)))
     os.makedirs(result_dir, exist_ok=True)
     c = open(result_dir + "/config.txt", "w")
     c.write("plus: {}, dataset: {}, epochs: {}, lr: {}, momentum: {},  weight-decay: {}, seed: {}".format(args.plus, args.dataset, str(args.epochs), str(args.lr), str(args.momentum),str(args.weight_decay), str(args.seed)))
@@ -115,9 +116,10 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed)
     
-    train_dataset, val_dataset, num_classes, unorm = get_datasets(args.dataset)
+    train_dataset, val_dataset, num_classes, unorm = get_datasets(args)
     # create model
-    model = sfocus18(args.dataset, num_classes, pretrained=False, plus=args.plus)
+    kwargs = vars(args)
+    model = sfocus18(pretrained=False, **kwargs)
     # define loss function (criterion) and optimizer
     if args.dataset == 'ImageNet':
         criterion = nn.CrossEntropyLoss().cuda()
@@ -132,11 +134,11 @@ def main():
     model = model.cuda()
 
     if args.mask == True:
-        mask_model = sfocus18(num_classes, pretrained=False, plus=args.plus)
+        mask_model = sfocus18(pretrained=False, **kwargs)
         mask_model = torch.nn.DataParallel(mask_model, device_ids=list(range(args.ngpu)))
         mask_model = mask_model.cuda()
         # optionally resume from a checkpoint
-        mask_model.load_state_dict(torch.load(os.path.join(base_path, 'History/2024-01-04_9H/model.pth')))
+        mask_model.load_state_dict(torch.load(os.path.join(base_path, 'Results/2023-10-31_10H/model.pth')))
 
 
     # get the number of model parameters
@@ -150,7 +152,7 @@ def main():
     cudnn.benchmark = True
 
     # Data loading code
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=args.workers, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=kwargs.get('batch-size'), shuffle=False, num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(val_loader, model, criterion, unorm, -1, PATH)
         return

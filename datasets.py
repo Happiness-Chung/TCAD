@@ -26,14 +26,14 @@ import torchvision.transforms as transforms
 
 class ChexpertTrainDataset(Dataset):
 
-    def __init__(self,transform = None, indices = None):
+    def __init__(self,transform = None, train_list= None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/selected_train.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/" ####
+        csv_path = "./data/CheXpert_v1_small_metadata.csv" ####
+        self.dir = "./data/" ####
         self.transform = transform
-
-        self.all_data = pd.read_csv(csv_path)
-        self.selecte_data = self.all_data.iloc[indices, :]
+        self.train_list = train_list
+        self.df = pd.read_csv(csv_path)
+        self.selecte_data = self.df[self.df['Path'].isin(self.train_list)]
         self.class_num = 10
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
@@ -58,7 +58,7 @@ class ChexpertTrainDataset(Dataset):
         row = self.selecte_data.iloc[index, :]
         # img = cv2.imread(self.dir + row['Path'])
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[2:])
+        label = torch.FloatTensor(row[3:])
         gray_img = self.transform(img)
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
 
@@ -68,7 +68,7 @@ class ChexpertTrainDataset(Dataset):
     def get_total_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 2:]
+            row = self.selecte_data.iloc[i, 3:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -88,11 +88,14 @@ class ChexpertTrainDataset(Dataset):
 
 class ChexpertTestDataset(Dataset):
 
-    def __init__(self, transform = None):
+    def __init__(self, transform = None, test_list = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/selected_test.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/" ####
+        csv_path = "./data/CheXpert_v1_small_metadata.csv" ####
+        self.dir = "./data" ####
         self.transform = transform
+        self.test_list = test_list
+        self.df = pd.read_csv(csv_path)
+        self.selecte_data = self.df[self.df['Path'].isin(self.test_list)]
 
         self.all_data = pd.read_csv(csv_path)
         self.selecte_data = self.all_data.iloc[:, :]
@@ -102,7 +105,7 @@ class ChexpertTestDataset(Dataset):
 
         row = self.selecte_data.iloc[index, :]
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[2:])
+        label = torch.FloatTensor(row[3:])
         gray_img = self.transform(img)
 
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
@@ -110,7 +113,7 @@ class ChexpertTestDataset(Dataset):
     def get_ds_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 2:]
+            row = self.selecte_data.iloc[i, 3:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -120,9 +123,9 @@ class ChexpertTestDataset(Dataset):
     
 class NIHTrainDataset(Dataset):
    
-    def __init__(self, data_dir, transform = None, indices=None):
+    def __init__(self, transform = None, indices=None):
         
-        self.data_dir = data_dir
+        self.data_dir = '../ICASC-/data/NIH'
         self.transform = transform
         self.df = self.get_df()
         self.make_pkl_dir(config.pkl_dir_path)
@@ -256,8 +259,8 @@ class NIHTrainDataset(Dataset):
     
 class NIHTestDataset(Dataset):
 
-    def __init__(self, data_dir, transform = None):
-        self.data_dir = data_dir
+    def __init__(self, transform = None):
+        self.data_dir = '../ICASC-/data/NIH'
         self.transform = transform
         # full dataframe including train_val and test set
         self.df = self.get_df()
@@ -339,8 +342,8 @@ class NIHTestDataset(Dataset):
     
 class NIHBboxDataset(Dataset):
 
-    def __init__(self, data_dir, transform = None):
-        self.data_dir = data_dir
+    def __init__(self, transform = None):
+        self.data_dir = '../ICASC-/data/NIH'
         self.transform = transform
         # full dataframe including train_val and test set
         self.df = self.get_df()
@@ -413,7 +416,8 @@ class NIHBboxDataset(Dataset):
         return test_df
 
     def get_test_list(self):
-        f = open( os.path.join('C:/Users/hb/Desktop/data/NIH', 'bbox_list.txt'), 'r')
+        ## 이 파일 뭐지
+        f = open(os.path.join('C:/Users/hb/Desktop/data/NIH', 'bbox_list.txt'), 'r')
         test_list = str.split(f.read(), '\n')
         return test_list
 
