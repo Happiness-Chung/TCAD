@@ -1,6 +1,7 @@
 from torchvision import transforms, datasets
-from datasets import ChexpertTrainDataset, ChexpertTestDataset, NIHTrainDataset, NIHTestDataset
+from datasets import ChexpertTrainDataset,ChexpertValidationDataset, ChexpertTestDataset, NIHTrainDataset, NIHTestDataset
 import torchvision
+import torch
 
 def get_mean_var_classes(name):
     name = name.split('_')[-1]
@@ -11,7 +12,7 @@ def get_mean_var_classes(name):
     elif name == 'stl10':
        return (0.4467, 0.43980, 0.4066), (0.2603, 0.2565, 0.2712), 10
     if name == 'CheXpert':
-        return 0.485, 0.229, 10
+        return 0.485, 0.229, 5
     if name == 'NIH':
         return (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 14
     return None
@@ -70,25 +71,31 @@ def get_datasets(name, test = None):
         train = datasets.STL10(root='./data/', split='train', download=False, transform=transform_train)
         test = datasets.STL10(root='./data/', split='test', download=False, transform=transform_test)
     elif name == 'CheXpert':
-        sampling_num = 86336
+        sampling_num = 200000
         normalize = transforms.Normalize(mean=[mean],
                                  std=[var])
         transform = transforms.Compose([
-                                    transforms.Resize([150,150]),
+                                    transforms.Resize([320,320]),
+                                    transforms.ToTensor(),
+                                    normalize,
+                                    transforms.RandomRotation(50),
+                                    # transforms.RandomHorizontalFlip()
+                                    ])
+        test_transform = transforms.Compose([
+                                    transforms.Resize([320,320]),
                                     transforms.ToTensor(),
                                     normalize
                                     ])
-        test_transform = transforms.Compose([
-                                    transforms.Resize([150,150]),
-                                    transforms.ToTensor()
-                                    ])
         if test == True:
             transform = transforms.Compose([
-                                    transforms.Resize([150,150]),
+                                    transforms.Resize([300,300]),
                                     transforms.ToTensor()
                                     ])
         train = ChexpertTrainDataset(transform = transform, indices=list(range(sampling_num)))
-        test = ChexpertTestDataset(transform = test_transform)
+        validation = ChexpertValidationDataset(transform = test_transform)
+        # train, validation = torch.utils.data.random_split(train, [int(0.9 * len(train)), len(train) - int(0.9 * len(train))])
+        # test = ChexpertTestDataset(transform = test_transform)
+        test = ChexpertValidationDataset(transform = test_transform)
     elif name == 'NIH':
         sampling_num = 86336
         normalize = transforms.Normalize(mean, var)
@@ -107,5 +114,5 @@ def get_datasets(name, test = None):
     
     unorm = UnNormalize(mean, var)
 
-    return train, test, num_classes, unorm
+    return train, validation, test, num_classes, unorm
 

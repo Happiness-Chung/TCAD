@@ -28,13 +28,14 @@ class ChexpertTrainDataset(Dataset):
 
     def __init__(self,transform = None, indices = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/selected_train.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/" ####
+        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/train_labels.csv" ####
+        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
         self.transform = transform
 
         self.all_data = pd.read_csv(csv_path)
-        self.selecte_data = self.all_data.iloc[indices, :]
-        self.class_num = 10
+        # self.selecte_data = self.all_data.iloc[indices, :]
+        self.selecte_data = self.all_data
+        self.class_num = 5
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
         self.total_ds_cnt = self.get_total_cnt()
@@ -58,7 +59,7 @@ class ChexpertTrainDataset(Dataset):
         row = self.selecte_data.iloc[index, :]
         # img = cv2.imread(self.dir + row['Path'])
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[2:])
+        label = torch.FloatTensor(row[5:])
         gray_img = self.transform(img)
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
 
@@ -68,7 +69,7 @@ class ChexpertTrainDataset(Dataset):
     def get_total_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 2:]
+            row = self.selecte_data.iloc[i, 5:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -90,19 +91,19 @@ class ChexpertTestDataset(Dataset):
 
     def __init__(self, transform = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/selected_test.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/" ####
+        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/test_labels.csv" ####
+        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
         self.transform = transform
 
         self.all_data = pd.read_csv(csv_path)
         self.selecte_data = self.all_data.iloc[:, :]
-        self.class_num = 10
+        self.class_num = 5
 
     def __getitem__(self, index):
 
         row = self.selecte_data.iloc[index, :]
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[2:])
+        label = torch.FloatTensor(row[1:])
         gray_img = self.transform(img)
 
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
@@ -110,7 +111,7 @@ class ChexpertTestDataset(Dataset):
     def get_ds_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 2:]
+            row = self.selecte_data.iloc[i, 1:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -118,6 +119,38 @@ class ChexpertTestDataset(Dataset):
     def __len__(self):
         return len(self.selecte_data)
     
+class ChexpertValidationDataset(Dataset):
+
+    def __init__(self, transform = None):
+        
+        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/val_labels.csv" ####
+        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
+        self.transform = transform
+
+        self.all_data = pd.read_csv(csv_path)
+        self.selecte_data = self.all_data.iloc[:, :]
+        self.class_num = 5
+
+    def __getitem__(self, index):
+
+        row = self.selecte_data.iloc[index, :]
+        img = pilimg.open(self.dir + row['Path'])
+        label = torch.FloatTensor(row[5:])
+        gray_img = self.transform(img)
+
+        return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
+
+    def get_ds_cnt(self):
+        total_ds_cnt = [0] * self.class_num
+        for i in range(len(self.selecte_data)):
+            row = self.selecte_data.iloc[i, 5:]
+            for j in range(len(row)):
+                total_ds_cnt[j] += int(row[j])
+        return total_ds_cnt
+
+    def __len__(self):
+        return len(self.selecte_data)
+
 class NIHTrainDataset(Dataset):
    
     def __init__(self, data_dir, transform = None, indices=None):
@@ -352,14 +385,14 @@ class NIHBboxDataset(Dataset):
         with open(os.path.join(config.pkl_dir_path, config.disease_classes_pkl_path), 'rb') as handle:
             self.all_classes = pickle.load(handle) 
         # get test_df
-        if not os.path.exists(os.path.join(config.pkl_dir_path, config.test_df_pkl_path)):
+        if not os.path.exists(os.path.join(config.pkl_dir_path, config.bbox_df_pkl_path)):
             self.test_df = self.get_test_df()
-            with open(os.path.join(config.pkl_dir_path, config.test_df_pkl_path), 'wb') as handle:
+            with open(os.path.join(config.pkl_dir_path, config.bbox_df_pkl_path), 'wb') as handle:
                 pickle.dump(self.test_df, handle, protocol = pickle.HIGHEST_PROTOCOL)
-            print('\n{}: dumped'.format(config.test_df_pkl_path))
+            print('\n{}: dumped'.format(config.bbox_df_pkl_path))
         else:
             # pickle load the test_df
-            with open(os.path.join(config.pkl_dir_path, config.test_df_pkl_path), 'rb') as handle:
+            with open(os.path.join(config.pkl_dir_path, config.bbox_df_pkl_path), 'rb') as handle:
                 self.test_df = pickle.load(handle)
 
         for i in range(len(self.test_df)):
@@ -409,7 +442,8 @@ class NIHBboxDataset(Dataset):
         for i in tqdm(range(self.df.shape[0])):
             filename  = os.path.basename(self.df.iloc[i,0])
             if filename in test_list:
-                test_df = test_df.append(self.df.iloc[i:i+1, :])
+                test_df = pd.concat([test_df, pd.DataFrame(self.df.iloc[i:i+1, :])], ignore_index=True)
+                # test_df = test_df.append(self.df.iloc[i:i+1, :])
         return test_df
 
     def get_test_list(self):
