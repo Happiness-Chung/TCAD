@@ -83,7 +83,7 @@ class BottleNeck(nn.Module):
     
 class ResNet(nn.Module):
 
-    def __init__(self, block, num_block, num_classes=10, plus = False):
+    def __init__(self, block, num_block, num_classes=5, depth = 192, plus = False):
         super().__init__()
 
         self.in_channels = 64
@@ -105,9 +105,9 @@ class ResNet(nn.Module):
         # class number of last blocks.
         if plus == True:
             for i in range(num_classes):
-                self.last_blocks.append(self._make_layer(block, 128, num_block[3], 2, "conv5_" + str(i) + "_x", last=True).cuda())
+                self.last_blocks.append(self._make_layer(block, depth, num_block[3], 2, "conv5_" + str(i) + "_x", last=True).cuda())
             self.last_blocks = nn.ModuleList(self.last_blocks)
-            self.fc = nn.Linear( num_classes * 128 * block.expansion, num_classes)
+            self.fc = nn.Linear( num_classes * depth * block.expansion, num_classes)
 
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         
@@ -180,10 +180,10 @@ class ResNet(nn.Module):
 
         return output 
 
-def resnet18(num_classes, plus):
+def resnet18(num_classes, depth, plus):
     """ return a ResNet 18 object
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, plus)
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, depth, plus)
 
 def resnet34():
     """ return a ResNet 34 object

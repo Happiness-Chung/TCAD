@@ -37,7 +37,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataset', default='CheXpert' , help='ImageNet, CheXpert, NIH, MIMIC')
 parser.add_argument('--plus', default = True, type=str, help='(1) whether apply icasc++')
 parser.add_argument('--model', default='ResNet', type=str, help='Base model architecture')
-parser.add_argument('--depth', default= 192, type=int, metavar='G', help='the number of channels of the last convolutional blocks')
+parser.add_argument('--depth', default= 1, type=int, metavar='G', help='the number of channels of the last convolutional blocks')
 parser.add_argument('--mask', default= False, type=str, help='(2) whether apply icasc++')
 parser.add_argument('--ngpu', default= 1, type=int, metavar='G', help='number of gpus to use')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
@@ -158,7 +158,7 @@ def main():
 
     # optionally resume from a checkpoint
     if args.resume:
-        model.load_state_dict(torch.load(os.path.join(base_path, '2024-03-14_14H/model.pth')))
+        model.load_state_dict(torch.load(os.path.join(base_path, '2024-03-02_21H/model.pth')))
 
     cudnn.benchmark = True
 

@@ -35,7 +35,7 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataset', default='NIH' , help='Dataor Integral Object Attention githubor Integral Object Attention githubset to train')
-parser.add_argument('--plus', default = False, type=str, 
+parser.add_argument('--plus', default = True, type=str, 
                     help='whether apply icasc++')
 parser.add_argument('--ngpu', default=1, type=int, metavar='G',
                     help='number of gpus to use')
@@ -73,7 +73,7 @@ parser.add_argument('--wandb_project', default='ICASC++', type=str, help='your w
 best_prec1 = 0
 
 global result_dir
-global iou
+global ci
 global bbox_cnt
 global bbox_imgs
 global bbox_masks
@@ -83,7 +83,7 @@ bbox_imgs = []
 bbox_masks = []
 bbox_grads = []
 bbox_cnt = 0
-iou = 0
+ci = 0
 
 def main():
     global args, best_prec1
@@ -103,7 +103,7 @@ def main():
                                     # normalize
                                     ])
     
-    train_dataset, val_dataset, num_classes, unorm = get_datasets(args.dataset)
+    _, _, num_classes, _ = get_datasets(args.dataset)
     # create model
     model = sfocus18(args.dataset, num_classes, pretrained=False, plus=args.plus)
 
@@ -116,54 +116,105 @@ def main():
         sum([p.data.nelement() for p in model.parameters()])))
 
     # optionally resume from a checkpoint
-    model.load_state_dict(torch.load('History/NIH/NIH_plain.pth'))
+    model.load_state_dict(torch.load('History/NIH/NIH_1_parallel_bw.pth'))
 
     cudnn.benchmark = True
 
     # Data loading code
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=args.workers, pin_memory=True)
+    bbox_loader = torch.utils.data.DataLoader(NIHBboxDataset('C:/Users/hb/Desktop/data/NIH', transform=transform), batch_size=64, shuffle=False, num_workers=args.workers, pin_memory=True)
     
     wandb.watch(model, log='all', log_freq=10)
-    validate(val_loader, model)
+    validate(bbox_loader, model)
 
-def create_binary_mask(heatmap, threshold=0.7):
+def create_binary_mask(heatmap, threshold=0.5):
     # Grad-CAM 히트맵을 이진 마스크로 변환
     binary_mask = torch.where(heatmap >= threshold, 1, 0)
     return binary_mask
 
+def calculate_CI(binary_mask, x, y, h, w):
 
-def create_background(torch_img, grad_cam_map):
+    global bbox_masks
+
+    # BBOX를 이진 마스크로 변환
+    bbox_mask = np.zeros_like(binary_mask.cpu()) # (3, 150, 150)
+    # print(bbox_mask.shape)
+    #print(x,w,y,h)
+    x = x*150/1024
+    y = y*150/1024
+    h = h*150/1024
+    w = w*150/1024
+    bbox_mask[round(x):round(x+w), round(y):round(y+h)] = 1
+
+    # bbox_masks.append(wandb.Image(bbox_mask, caption="mask"))
+
+    # 교차 영역과 합집합 영역 계산
+    intersection = np.logical_and(binary_mask.cpu(), bbox_mask).sum()
+    union = bbox_mask.sum()
+
+    # IoU 계산
+    ci = intersection / union
+    return ci
+
+def save_cam(name, torch_img, grad_cam_map, index, args, conf = False):
+
+    args = parser.parse_args()
+    if args.dataset == 'NIH':
+        bbox_df = pd.read_csv('C:/Users/hb/Desktop/code/ICASC++/BBox_List_2017.csv')
+
     grad_cam_map = grad_cam_map[0].unsqueeze(dim=0).unsqueeze(dim=0)
     grad_cam_map = F.interpolate(grad_cam_map, size=(150, 150), mode='bilinear', align_corners=False) # (1, 1, W, H)
     map_min, map_max = grad_cam_map.min(), grad_cam_map.max()
     grad_cam_map = (grad_cam_map - map_min).div(map_max - map_min + 0.0000001).data # (1, 1, W, H), min-max scaling
 
-
-    #grad_cam_map = grad_cam_map.squeeze() # : (224, 224)
     grad_heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_map.squeeze().cpu()), cv2.COLORMAP_JET) # (W, H, 3), numpy 
     grad_heatmap = torch.from_numpy(grad_heatmap).permute(2, 0, 1).float().div(255) # (3, W, H)
     b, g, r = grad_heatmap.split(1)
-    grad_heatmap = torch.cat([grad_cam_map[0], grad_cam_map[0], grad_cam_map[0]]) # (3, 244, 244), opencv's default format is BGR, so we need to change it as RGB format.
-    mask = 1 - create_binary_mask(grad_heatmap)
-    result = torch_img * mask
+    grad_heatmap = torch.cat([r, g, b]) # (3, 244, 244), opencv's default format is BGR, so we need to change it as RGB format.
+    for_bbox = torch.cat([grad_cam_map[0], grad_cam_map[0], grad_cam_map[0]])
 
-    return result
+    grad_result = grad_heatmap.cpu() + torch_img.cpu() # (1, 3, W, H)
+    grad_result = grad_result.div(grad_result.max()).squeeze() # (3, W, H)
 
+    # dimension reduction
+    temp = torch.mean(for_bbox, dim=0).squeeze()
 
-def get_hscore(true,false):
-    #print(true.min(), true.max())
-    true = (true - true.min()) / (true.max() - true.min() + 0.0000001)
-    false = (false - false.min()) / (false.max() - false.min() + 0.0000001)
-    #print((torch.abs(2 * true - false) - false))
-    h_score = ((torch.abs(2 * true - false) - false) / (2*150*150) * 100).sum().item()
-    if math.isnan(h_score):
-        h_score = 0
-    return h_score
+    if args.dataset == 'NIH':
+        if name in bbox_df['Image Index'].values.tolist():
+            # print(name)
+
+            global ci
+            global bbox_cnt
+            global bbox_imgs
+            global bbox_masks
+            global bbox_grads 
+
+            x = bbox_df[bbox_df['Image Index'] == name]['Bbox [x'].values[0]
+            y = bbox_df[bbox_df['Image Index'] == name]['y'].values[0]
+            w = bbox_df[bbox_df['Image Index'] == name]['w'].values[0]
+            h = bbox_df[bbox_df['Image Index'] == name]['h]'].values[0]
+
+            binary_mask = create_binary_mask(temp)
+            ci += calculate_CI(binary_mask, x, y, h, w)
+            bbox_cnt += 1
+            bbox_img = draw_bounding_boxes(torch.tensor(binary_mask*255,dtype=torch.uint8).unsqueeze(0), torch.tensor([[x*150/1024,y*150/1024,(x+w)*150/1024,(y+h)*150/1024]], dtype=torch.float), width=2, colors=(240, 10, 157))
+ 
+        return grad_result, bbox_img
+
+    result_dir = os.path.join('./results', args.experiment_name)
+    os.makedirs(result_dir+'/attention_map', exist_ok=True)
+
+    if conf == False:
+        save_image(grad_result,'C:/Users/hb/Desktop/code/ICASC++/result/Useful/bbox/result{}_true.png'.format(index))
+        save_image(bbox_img, 'C:/Users/hb/Desktop/code/ICASC++/result/Useful/bbox/result{}_bbox.png'.format(index))
+    else:
+        save_image(grad_result,'C:/Users/hb/Desktop/code/ICASC++/result/Useful/NIH/plus(256)/result{}_false.png'.format(index))
+        save_image(bbox_img, 'C:/Users/hb/Desktop/code/ICASC++/result/Useful/NIH/plus(256)/result{}_bbox.png'.format(index))
 
 def validate(val_loader, model):
     batch_time = AverageMeter()
+    bbox_df = pd.read_csv('C:/Users/hb/Desktop/code/ICASC++/BBox_List_2017.csv')
 
-    global iou
+    global ci
     global bbox_cnt
     global bbox_imgs
     global bbox_grads
@@ -193,26 +244,26 @@ def validate(val_loader, model):
         target = target.cuda()
         inputs = inputs.cuda()
 
+        # compute output
         if args.plus == False:
             output, l1, l2, l3, hmap_t, hmaps_f = model(inputs, target)
         else:
             output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(inputs, target)
             loss = criterion(output, target)+l1+l2+l3+bw
         
-        temp = []
+        bbox_imgs = []
+        bbox_grads = []
         for j in range(len(hmap_t)):
-            temp.append(create_background(inputs[j], hmaps_f[j]))
-        
-        background_imgs = torch.stack(temp, dim=0)
-
-        if args.plus == False:
-            output, l1, l2, l3, hmap_t, hmaps_f = model(background_imgs, target)
-        else:
-            output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(background_imgs, target)
+            if name[j] in bbox_df['Image Index'].values.tolist():
+                grad, mask = save_cam(name[j], inputs[j], hmap_t[j], i*len(inputs) + j, args)
+                # grad, mask = save_cam(name[j], inputs[j], hmaps_f[j], i*len(inputs) + j, args, conf=True)
+                bbox_imgs.append(wandb.Image(grad, caption="grad"))
+                bbox_grads.append(wandb.Image(mask, caption="final"))
+        wandb.log({"Final Images":bbox_imgs,"Grads":bbox_grads})
 
     # measure elapsed time
-    auc = roc_auc_score(gt, probs)
-    print("Test AUC after deletion: {}". format(auc))
+    print("Covering Index: ", ci/ bbox_cnt)
+    wandb.log({"Final Images":bbox_imgs})
     batch_time.update(time.time() - end)
     end = time.time()
 

@@ -35,8 +35,9 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataset', default='NIH' , help='Dataor Integral Object Attention githubor Integral Object Attention githubset to train')
-parser.add_argument('--plus', default = False, type=str, 
+parser.add_argument('--plus', default = True, type=str, 
                     help='whether apply icasc++')
+parser.add_argument('--depth', default = 1, type=int, metavar='G', help='the number of channels of the last convolutional blocks')
 parser.add_argument('--ngpu', default=1, type=int, metavar='G',
                     help='number of gpus to use')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
@@ -96,16 +97,10 @@ def main():
     random.seed(args.seed)
 
     wandb.init(project=args.wandb_project, entity=args.wandb_user, reinit=True, name=args.experiment_name)
-
-    transform = transforms.Compose([
-                                    transforms.Resize([150,150]),
-                                    transforms.ToTensor(),
-                                    # normalize
-                                    ])
     
-    train_dataset, val_dataset, num_classes, unorm = get_datasets(args.dataset)
+    _, val_dataset, test_dataset, num_classes, unorm = get_datasets(args.dataset)
     # create model
-    model = sfocus18(args.dataset, num_classes, pretrained=False, plus=args.plus)
+    model = sfocus18(args.dataset, "ResNet", num_classes, pretrained=False, depth=args.depth, plus=args.plus)
 
     model = torch.nn.DataParallel(model, device_ids=list(range(args.ngpu)))
     #model = torch.nn.DataParallel(model).cuda()
@@ -116,21 +111,19 @@ def main():
         sum([p.data.nelement() for p in model.parameters()])))
 
     # optionally resume from a checkpoint
-    model.load_state_dict(torch.load('History/NIH/NIH_plain.pth'))
+    model.load_state_dict(torch.load(args.base_path + '/CheXpert_challenge_setting/ECNN1.pth'))
 
     cudnn.benchmark = True
 
     # Data loading code
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=args.workers, pin_memory=True)
-    
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=args.workers, pin_memory=True)
     wandb.watch(model, log='all', log_freq=10)
-    validate(val_loader, model)
+    validate(test_loader, model)
 
-def create_binary_mask(heatmap, threshold=0.7):
+def create_binary_mask(heatmap, threshold=0.5):
     # Grad-CAM 히트맵을 이진 마스크로 변환
     binary_mask = torch.where(heatmap >= threshold, 1, 0)
     return binary_mask
-
 
 def create_background(torch_img, grad_cam_map):
     grad_cam_map = grad_cam_map[0].unsqueeze(dim=0).unsqueeze(dim=0)
@@ -150,17 +143,50 @@ def create_background(torch_img, grad_cam_map):
     return result
 
 
+def save_cam(torch_img, grad_cam_map, index, args, conf = False):
+
+    args = parser.parse_args()
+    if args.dataset == 'NIH':
+        bbox_df = pd.read_csv('C:/Users/hb/Desktop/code/ICASC++/BBox_List_2017.csv')
+    #     file_name = args.experiment_name+'_IOU.txt'
+    #     # print(bbox_df['Image Index'])
+    #     content = ''
+    #     with open(file_name, 'w') as file:
+    #         file.write(content)
+
+    # print(grad_cam_map)
+    grad_cam_map = grad_cam_map[0].unsqueeze(dim=0).unsqueeze(dim=0)
+    grad_cam_map = F.interpolate(grad_cam_map, size=(150, 150), mode='bilinear', align_corners=False) # (1, 1, W, H)
+    map_min, map_max = grad_cam_map.min(), grad_cam_map.max()
+    grad_cam_map = (grad_cam_map - map_min).div(map_max - map_min + 0.0000001).data # (1, 1, W, H), min-max scaling
+
+
+    #grad_cam_map = grad_cam_map.squeeze() # : (224, 224)
+    grad_heatmap = cv2.applyColorMap(np.uint8(255 * grad_cam_map.squeeze().cpu()), cv2.COLORMAP_JET) # (W, H, 3), numpy 
+    grad_heatmap = torch.from_numpy(grad_heatmap).permute(2, 0, 1).float().div(255) # (3, W, H)
+    b, g, r = grad_heatmap.split(1)
+    grad_heatmap = torch.cat([r, g, b]) # (3, 244, 244), opencv's default format is BGR, so we need to change it as RGB format.
+
+    # print(grad_heatmap.size(), torch_img.size())
+    grad_result = grad_heatmap.cpu() + torch_img.cpu() # (1, 3, W, H)
+    grad_result = grad_result.div(grad_result.max()).squeeze() # (3, W, H)
+
+    if conf == False:
+        save_image(grad_result,'C:/Users/hb/Desktop/code/XAI/Results/aug/result{}_true.png'.format(index))
+    else:
+        save_image(grad_result,'C:/Users/hb/Desktop/code/XAI/Results/aug/result{}_false.png'.format(index))
+    
 def get_hscore(true,false):
-    #print(true.min(), true.max())
+
     true = (true - true.min()) / (true.max() - true.min() + 0.0000001)
     false = (false - false.min()) / (false.max() - false.min() + 0.0000001)
-    #print((torch.abs(2 * true - false) - false))
-    h_score = ((torch.abs(2 * true - false) - false) / (2*150*150) * 100).sum().item()
-    if math.isnan(h_score):
-        h_score = 0
-    return h_score
+    d_score = ((torch.abs(2 * true - false) - false) / (2*150*150) * 100).sum().item()
+    if math.isnan(d_score):
+        d_score = 0
+    return d_score
 
 def validate(val_loader, model):
+
     batch_time = AverageMeter()
 
     global iou
@@ -175,7 +201,7 @@ def validate(val_loader, model):
     # switch to evaluate mode
     # model.eval()
     end = time.time()
-    h_score = 0
+    d_score = 0
     criterion = torch.nn.BCEWithLogitsLoss().cuda()
 
     if args.dataset == 'CheXpert':
@@ -188,31 +214,26 @@ def validate(val_loader, model):
     gt = np.zeros((val_loader_examples_num, class_num), dtype = np.float32)
     k = 0
 
-    for i, (name, inputs, target) in enumerate(val_loader):
+    for i, (inputs, target) in enumerate(val_loader):
         
         target = target.cuda()
         inputs = inputs.cuda()
 
-        if args.plus == False:
-            output, l1, l2, l3, hmap_t, hmaps_f = model(inputs, target)
-        else:
-            output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(inputs, target)
-            loss = criterion(output, target)+l1+l2+l3+bw
         
-        temp = []
+        # compute output
+        # compute output
+        if args.plus == False:
+            _, _, _, _, hmap_t, hmap_f = model(inputs, target)
+        else:
+            _, _, _, _, hmap_t, hmap_f, _, _ = model(inputs, target)
+        
         for j in range(len(hmap_t)):
-            temp.append(create_background(inputs[j], hmaps_f[j]))
-        
-        background_imgs = torch.stack(temp, dim=0)
+            
+            # save_cam(inputs[j], hmap_t[j], i * 64 + j, args, conf=False)
+            # save_cam(inputs[j], hmap_f[j], i * 64 + j, args, conf=True)
+            d_score += get_hscore(hmap_t[j], hmap_f[j])
 
-        if args.plus == False:
-            output, l1, l2, l3, hmap_t, hmaps_f = model(background_imgs, target)
-        else:
-            output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(background_imgs, target)
-
-    # measure elapsed time
-    auc = roc_auc_score(gt, probs)
-    print("Test AUC after deletion: {}". format(auc))
+    print("D-score: ", d_score/len(val_loader))
     batch_time.update(time.time() - end)
     end = time.time()
 

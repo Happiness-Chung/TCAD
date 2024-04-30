@@ -28,14 +28,14 @@ class ChexpertTrainDataset(Dataset):
 
     def __init__(self,transform = None, indices = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/train_labels.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
+        csv_path = "C:/Users/hb/Desktop/Data/CheXpert-v1.0-small/labels(former)/selected_train.csv" ####
+        self.dir = "C:/Users/hb/Desktop/Data/" ####
         self.transform = transform
 
         self.all_data = pd.read_csv(csv_path)
         # self.selecte_data = self.all_data.iloc[indices, :]
         self.selecte_data = self.all_data
-        self.class_num = 5
+        self.class_num = 10
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
         self.total_ds_cnt = self.get_total_cnt()
@@ -59,7 +59,8 @@ class ChexpertTrainDataset(Dataset):
         row = self.selecte_data.iloc[index, :]
         # img = cv2.imread(self.dir + row['Path'])
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[5:])
+        # label = torch.FloatTensor(row[5:])
+        label = torch.FloatTensor(row[2:])
         gray_img = self.transform(img)
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
 
@@ -91,7 +92,7 @@ class ChexpertTestDataset(Dataset):
 
     def __init__(self, transform = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/test_labels.csv" ####
+        csv_path = "C:/Users/hb/Desktop/Data/CheXpert-v1.0-small/Challenge/test_labels.csv" ####
         self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
         self.transform = transform
 
@@ -103,6 +104,7 @@ class ChexpertTestDataset(Dataset):
 
         row = self.selecte_data.iloc[index, :]
         img = pilimg.open(self.dir + row['Path'])
+        # label = torch.FloatTensor(row[1:])
         label = torch.FloatTensor(row[1:])
         gray_img = self.transform(img)
 
@@ -123,7 +125,7 @@ class ChexpertValidationDataset(Dataset):
 
     def __init__(self, transform = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/val_labels.csv" ####
+        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/Challenge/val_labels.csv" ####
         self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
         self.transform = transform
 
@@ -372,9 +374,10 @@ class NIHTestDataset(Dataset):
     
 class NIHBboxDataset(Dataset):
 
-    def __init__(self, data_dir, transform = None):
+    def __init__(self, data_dir, transform = None, transform_raw = None):
         self.data_dir = data_dir
         self.transform = transform
+        self.transform_raw = transform_raw
         # full dataframe including train_val and test set
         self.df = self.get_df()
         self.make_pkl_dir(config.pkl_dir_path)
@@ -410,7 +413,7 @@ class NIHBboxDataset(Dataset):
     def __getitem__(self, index):
         row = self.test_df.iloc[index, :]
         # img = cv2.imread(row['image_links'])
-        img = Image.open(row['image_links'])
+        img_raw = Image.open(row['image_links'])
         name = row['image_links'].split('\\')[-1]
         labels = str.split(row['Finding Labels'], '|')
         target = torch.zeros(len(self.all_classes)) # 15
@@ -418,8 +421,9 @@ class NIHBboxDataset(Dataset):
             lab_idx = self.all_classes.index(lab)
             target[lab_idx] = 1     
         if self.transform is not None:
-            img = self.transform(img)
-        return name, img, target[:14]
+            img = self.transform(img_raw)
+            img_raw = self.transform_raw(img_raw)
+        return name, img_raw, img, target[:14]
 
     def make_pkl_dir(self, pkl_dir_path):
         if not os.path.exists(pkl_dir_path):
