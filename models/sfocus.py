@@ -96,21 +96,28 @@ class SFOCUS(nn.Module):
     def loss_attention_separation(self, At, Aconf):
         At_min = At.min().detach()
         At_max = At.max().detach()
-        scaled_At = (At - At_min)/(At_max - At_min)
-        sigma = 0.25 * At_max
+        Aconf_min = Aconf.min().detach()
+        Aconf_max = Aconf.max().detach()
+        scaled_At = (At - At_min)/(At_max - At_min + 0.00000001)
+        scaled_Aconf = (Aconf - Aconf_min)/(Aconf_max - Aconf_min + 0.00000001)
+        sigma = 0.55 * scaled_At.max()
         omega = 100.
-        mask = F.sigmoid(omega*(scaled_At-sigma))
-        L_as_num = (torch.min(At, Aconf)*mask).sum() 
-        L_as_den = (At+Aconf).sum()
-        L_as = 2.0*L_as_num/L_as_den
+        mask = 1 / (1 + torch.exp(-omega*(scaled_At - sigma + 0.00000001)))
+        L_as_num = (torch.min(scaled_At, scaled_Aconf)*mask).sum() 
+        L_as_den = (scaled_At + scaled_Aconf).sum()
+        L_as = 2.0*L_as_num/(L_as_den + 0.00000001)
 
         return L_as, mask
     
     def loss_attention_consistency(self, At, mask):
+        At_min = At.min().detach()
+        At_max = At.max().detach()
+        scaled_At = (At - At_min)/(At_max - At_min + 0.00000001)
         theta = 0.8
-        num = (At*mask).sum()
-        den = At.sum()
-        L_ac = theta - num/den
+        scaled_At = F.interpolate(scaled_At, size=(19, 19), mode='bilinear', align_corners=True)
+        num = (scaled_At*mask).sum()
+        den = scaled_At.sum()
+        L_ac = theta - num/(den + 0.00000001)
         return L_ac
 
 
