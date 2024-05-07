@@ -31,7 +31,8 @@ class _DenseLayer(nn.Module):
     """
     def __init__(self, num_input_features, growth_rate, bn_size, drop_rate, memory_efficient=False):
         super(_DenseLayer, self).__init__()
-        self.add_module('norm1', nn.BatchNorm2d(num_input_features, momentum=0.01)),
+        print('num_input_features', num_input_features)
+        #self.add_module('norm1', nn.BatchNorm2d(num_input_features, momentum=0.01)),
         self.add_module('elu1', activation_func(inplace=True)),
         self.add_module('conv1', nn.Conv2d(num_input_features, bn_size *
                                            growth_rate, kernel_size=1, stride=1,
@@ -46,8 +47,13 @@ class _DenseLayer(nn.Module):
 
     def bn_function(self, inputs):
         # type: (List[Tensor]) -> Tensor
+        '''
+        [16, 64, 80, 80] -> [16, 128, 40, 40] -> [16, 256, 20, 20] -> [16, 512, 10, 10]이 되자마자 바로 에러 남.
+        '''
         concated_features = torch.cat(inputs, 1)
-        bottleneck_output = self.conv1(self.elu1(self.norm1(concated_features)))  # noqa: T484
+        print(concated_features.shape)
+        #bottleneck_output = self.conv1(self.elu1(self.norm1(concated_features)))  # noqa: T484
+        bottleneck_output = self.conv1(self.elu1(concated_features))
         return bottleneck_output
 
     # todo: rewrite when torchscript supports any

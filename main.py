@@ -59,19 +59,20 @@ parser.add_argument('--print-freq', '-p', default=100, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default= False, type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument("--seed", type=int, default=1234, metavar='BS', help='input batch size for training (default: 64)')
 parser.add_argument("--prefix", default="Result", type=str, required=False, metavar='PFX', help='prefix for logging & checkpoint saving')
 parser.add_argument('--evaluate',default=False, dest='evaluate', action='store_true', help='evaluation only')
 best_prec1 = 0
 
 # Stella added
 parser.add_argument('--base_path', default = 'History', type=str, help='base path for Stella (you have to change)')
-parser.add_argument('--wandb_key', default='c07987db95186aade1f1dd62754c86b4b6db5af6', type=str, help='wandb key for Stella (you have to change). You can get it from https://wandb.ai/authorize')
+parser.add_argument('--wandb_key', default='108101f4b9c3e31a235aa58307d1c6b548cfb54a', type=str, help='wandb key for Stella (you have to change). You can get it from https://wandb.ai/authorize')
 parser.add_argument('--wandb_mode', default='online', type=str, choices=['online', 'offline'], help='tracking with wandb or turn it off')
-parser.add_argument('--wandb_user', default='hphp', type=str, help='your wandb username (you have to change)')
-parser.add_argument('--experiment_name', default='Toward SOTA', type=str, help='your wandb experiment name (you have to change)')
-parser.add_argument('--wandb_project', default='ICASC++', type=str, help='your wandb project name (you have to change)')
-
+parser.add_argument('--wandb_user', default='stellasybae', type=str, help='your wandb username (you have to change)')
+parser.add_argument('--experiment_name', default='densenet', type=str, help='your wandb experiment name (you have to change)')
+parser.add_argument('--wandb_project', default='TrustCAD', type=str, help='your wandb project name (you have to change)')
+parser.add_argument('--layer_depth', default=1, type=int, help='depth of last layer')
+parser.add_argument('--seed', default=1, metavar='BS', type=int, help='seed for split file', choices=[1,2,3])
+parser.add_argument('--loss_tf', action='store_true', help='true attention map vs. false attention map') 
 
 global result_dir
 global probs 
@@ -121,9 +122,10 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed)
     
-    train_dataset, val_dataset, test_dataset, num_classes, unorm = get_datasets(args.dataset)
+    train_dataset, val_dataset, test_dataset, num_classes, unorm = get_datasets(args)
     # create model
-    model = sfocus18(args.dataset, args.model, num_classes, depth = args.depth, pretrained=False, plus=args.plus)
+    kwargs = vars(args)
+    model = sfocus18(pretrained=False, **kwargs)
     # model = densenet201()
     # model = densenet121()
     # define loss function (criterion) and optimizer
@@ -217,7 +219,7 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
     top5 = AverageMeter()
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 
@@ -420,7 +422,7 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
     sigmoid =  nn.Sigmoid()
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 
@@ -524,7 +526,7 @@ def test(test_loader, model, criterion, unorm, epoch, PATH, dir):
     global k
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 

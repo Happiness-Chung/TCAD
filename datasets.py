@@ -26,16 +26,15 @@ import torchvision.transforms as transforms
 
 class ChexpertTrainDataset(Dataset):
 
-    def __init__(self,transform = None, indices = None):
+    def __init__(self,transform = None, train_list= None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/train_labels.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
+        csv_path = "../TCAD_stella/data/CheXpert_v1_small_metadata.csv" ####
+        self.dir = "../TCAD_stella/data/" ####
         self.transform = transform
-
-        self.all_data = pd.read_csv(csv_path)
-        # self.selecte_data = self.all_data.iloc[indices, :]
-        self.selecte_data = self.all_data
-        self.class_num = 5
+        self.train_list = train_list
+        self.df = pd.read_csv(csv_path)
+        self.selecte_data = self.df[self.df['Path'].isin(self.train_list)]
+        self.class_num = 10
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
         self.total_ds_cnt = self.get_total_cnt()
@@ -59,7 +58,7 @@ class ChexpertTrainDataset(Dataset):
         row = self.selecte_data.iloc[index, :]
         # img = cv2.imread(self.dir + row['Path'])
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[5:])
+        label = torch.FloatTensor(row[3:])
         gray_img = self.transform(img)
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
 
@@ -69,7 +68,7 @@ class ChexpertTrainDataset(Dataset):
     def get_total_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 5:]
+            row = self.selecte_data.iloc[i, 3:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -89,29 +88,31 @@ class ChexpertTrainDataset(Dataset):
 
 class ChexpertTestDataset(Dataset):
 
-    def __init__(self, transform = None):
+    def __init__(self, transform = None, test_list = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/test_labels.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
+        csv_path = "../TCAD_stella/data/CheXpert_v1_small_metadata.csv" ####
+        self.dir = "../TCAD_stella/data/" ####
         self.transform = transform
+        self.test_list = test_list
+        self.df = pd.read_csv(csv_path)
+        self.selecte_data = self.df[self.df['Path'].isin(self.test_list)]
 
         self.all_data = pd.read_csv(csv_path)
         self.selecte_data = self.all_data.iloc[:, :]
-        self.class_num = 5
+        self.class_num = 10
 
     def __getitem__(self, index):
-
         row = self.selecte_data.iloc[index, :]
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[1:])
+        label = torch.FloatTensor(row[3:])
         gray_img = self.transform(img)
-
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
-
+    
+    
     def get_ds_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 1:]
+            row = self.selecte_data.iloc[i, 3:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -121,21 +122,21 @@ class ChexpertTestDataset(Dataset):
     
 class ChexpertValidationDataset(Dataset):
 
-    def __init__(self, transform = None):
+    def __init__(self, transform = None, valid_list = None):
         
-        csv_path = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/val_labels.csv" ####
-        self.dir = "C:/Users/hb/Desktop/data/CheXpert-v1.0-small/" ####
+        csv_path = "../TCAD_stella/data/CheXpert_v1_small_metadata.csv" ####
+        self.dir = "../TCAD_stella/data/" ####
         self.transform = transform
-
-        self.all_data = pd.read_csv(csv_path)
-        self.selecte_data = self.all_data.iloc[:, :]
-        self.class_num = 5
+        self.valid_list = valid_list
+        self.df = pd.read_csv(csv_path)
+        self.selecte_data = self.df[self.df['Path'].isin(self.valid_list)]
+        self.class_num = 10
 
     def __getitem__(self, index):
 
         row = self.selecte_data.iloc[index, :]
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[5:])
+        label = torch.FloatTensor(row[3:])
         gray_img = self.transform(img)
 
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
@@ -143,7 +144,7 @@ class ChexpertValidationDataset(Dataset):
     def get_ds_cnt(self):
         total_ds_cnt = [0] * self.class_num
         for i in range(len(self.selecte_data)):
-            row = self.selecte_data.iloc[i, 5:]
+            row = self.selecte_data.iloc[i, 3:]
             for j in range(len(row)):
                 total_ds_cnt[j] += int(row[j])
         return total_ds_cnt
@@ -155,7 +156,7 @@ class NIHTrainDataset(Dataset):
    
     def __init__(self, data_dir, transform = None, indices=None):
         
-        self.data_dir = data_dir
+        self.data_dir = '../ICASC-/data/NIH'
         self.transform = transform
         self.df = self.get_df()
         self.make_pkl_dir(config.pkl_dir_path)
@@ -290,7 +291,7 @@ class NIHTrainDataset(Dataset):
 class NIHTestDataset(Dataset):
 
     def __init__(self, data_dir, transform = None):
-        self.data_dir = data_dir
+        self.data_dir = '../ICASC-/data/NIH'
         self.transform = transform
         # full dataframe including train_val and test set
         self.df = self.get_df()

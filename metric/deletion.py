@@ -201,7 +201,8 @@ def validate(val_loader, model):
         
         temp = []
         for j in range(len(hmap_t)):
-            temp.append(create_background(inputs[j], hmap_t[j]))
+            #temp.append(create_background(inputs[j], hmap_t[j]))
+            temp.append(create_background(inputs[j], hmaps_f[j])) ## 왜 이걸 넣은 걸까나?
         
         background_imgs = torch.stack(temp, dim=0)
 
