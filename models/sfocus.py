@@ -14,7 +14,7 @@ class SFOCUS(nn.Module):
         super(SFOCUS, self).__init__()
 
         # grad_layers = ['conv4_x', 'conv5_x']
-        self.model = model_instance
+        self.model = model_instance # base - using ResNet
         self.dataset = kwargs.get('dataset')
         self.test = kwargs.get('test')
         self.plus = kwargs.get('plus')
@@ -97,20 +97,18 @@ class SFOCUS(nn.Module):
         return h_score
 
     def loss_attention_separation(self, At, Aconf):
-#         At_min = At.min().detach()
-#         At_max = At.max().detach()
-#         scaled_At = (At - At_min)/(At_max - At_min)
-#         sigma = 0.25 * At_max
-#        omega = 100.
-#        mask = F.sigmoid(omega*(scaled_At-sigma))
-        scaled_At = torch.nn.functional.normalize(At)
-        scaled_Aconf = torch.nn.functional.normalize(Aconf)
-
+        At_min = At.min().detach()
+        At_max = At.max().detach()
+        Aconf_min = Aconf.min().detach()
+        Aconf_max = Aconf.max().detach()
+        scaled_At = (At - At_min)/(At_max - At_min + 0.00000001)
+        scaled_Aconf = (Aconf - Aconf_min)/(Aconf_max - Aconf_min + 0.00000001)
+        sigma = 0.55 * scaled_At.max()
         omega = 100.
-        mask = 1 / (1 + torch.exp(-omega*scaled_At))
-        L_as_num = (torch.min(At, Aconf)*mask).sum() 
-        L_as_den = (At+Aconf).sum()
-        L_as = 2.0*L_as_num/L_as_den
+        mask = 1 / (1 + torch.exp(-omega*(scaled_At - sigma + 0.00000001)))
+        L_as_num = (torch.min(scaled_At, scaled_Aconf)*mask).sum() 
+        L_as_den = (scaled_At + scaled_Aconf).sum()
+        L_as = 2.0*L_as_num/(L_as_den + 0.00000001)
         
         print('L_as is', L_as)
 
@@ -364,13 +362,13 @@ class SFOCUS(nn.Module):
                             backward_feature /= cnt
                         # 여기서 relu를 사용하는게 모든 attention map을 suppress하는 것 같아. 
                         # 그렇다는 것은 backward feature의 value가 0보다 다 작다는 거지..
-                        weights = F.adaptive_avg_pool2d((backward_feature), 1)
+                        weights = F.adaptive_avg_pool2d(sigmoid(backward_feature), 1)
 
                         # channel 1
                         # A_t_la.append(sigmoid(torch.mul(forward_feature, weights)))
                         # channel 128
-                        A_t_la.append(F.relu(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
-
+                        #A_t_la.append(F.relu(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
+                        A_t_la.append(sigmoid(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
                     # A_t_la.append(forward_feature)
                     # bw_loss_true.append(forward_feature.sum())
 
@@ -422,11 +420,12 @@ class SFOCUS(nn.Module):
                             forward_feature /= cnt
                             backward_feature /= cnt
 
-                        weights = F.adaptive_avg_pool2d((backward_feature), 1)
+                        weights = F.adaptive_avg_pool2d(sigmoid(backward_feature), 1)
                         # channel 1
                         # A_conf_la.append(sigmoid(torch.mul(forward_feature, weights)))
                         # channel 128
-                        A_conf_la.append(F.relu(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
+                        #A_conf_la.append(F.relu(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
+                        A_conf_la.append(sigmoid(torch.mul(forward_feature, weights).sum(dim=0, keepdim=True)/block_depth))
                     # A_conf_la = sigmoid(torch.mul(forward_feature, weights).sum(dim=1, keepdim=True))
 
                     # bw_loss_false = forward_feature.sum()
