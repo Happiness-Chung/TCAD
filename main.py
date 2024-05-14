@@ -37,19 +37,19 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataset', default='CheXpert' , help='ImageNet, CheXpert, NIH, MIMIC')
 parser.add_argument('--plus', default = True, type=str, help='(1) whether apply icasc++')
 parser.add_argument('--model', default='ResNet', type=str, help='Base model architecture')
-parser.add_argument('--depth', default= 192, type=int, metavar='G', help='the number of channels of the last convolutional blocks')
+#parser.add_argument('--depth', default= 192, type=int, metavar='G', help='the number of channels of the last convolutional blocks')
 parser.add_argument('--mask', default= False, type=str, help='(2) whether apply icasc++')
 parser.add_argument('--ngpu', default= 1, type=int, metavar='G', help='number of gpus to use')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default= 40, type=int, metavar='N',
+parser.add_argument('--epochs', default= 20, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--milestones', type=int, default=[50,100], nargs='+', help='LR decay milestones') #####
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=16, type=int,
+parser.add_argument('-b', '--batch-size', default=32, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -107,13 +107,13 @@ def main():
     base_path = args.base_path
     os.environ["WANDB_API_KEY"] = args.wandb_key
     os.environ["WANDB_MODE"] = args.wandb_mode
-    # wandb.init(project=args.wandb_project, entity=args.wandb_user, reinit=True, name=args.experiment_name)
+    wandb.init(project=args.wandb_project, entity=args.wandb_user, reinit=True, name=args.experiment_name)
 
     now = datetime.now()
     result_dir = os.path.join(base_path, "{}_{}H".format(now.date(), str(now.hour)))
     os.makedirs(result_dir, exist_ok=True)
     c = open(result_dir + "/config.txt", "w")
-    c.write("plus: {}, depth: {}, dataset: {}, epochs: {}, lr: {}, momentum: {},  weight-decay: {}, seed: {}".format(args.plus, str(args.depth), args.dataset, str(args.epochs), str(args.lr), str(args.momentum),str(args.weight_decay), str(args.seed)))
+    c.write("plus: {}, depth: {}, dataset: {}, epochs: {}, lr: {}, momentum: {},  weight-decay: {}, seed: {}".format(args.plus, str(args.layer_depth), args.dataset, str(args.epochs), str(args.lr), str(args.momentum),str(args.weight_decay), str(args.seed)))
     open(result_dir + "/validation_performance.txt", "w")
     open(result_dir + "/test_performance.txt", "w")
 
@@ -133,14 +133,14 @@ def main():
         criterion = nn.CrossEntropyLoss().cuda()
     elif args.dataset == 'CheXpert' or args.dataset == 'MIMIC' or args.dataset == 'NIH':
         criterion = torch.nn.BCEWithLogitsLoss().cuda()
-        criterion2 = AUCMLoss().cuda()
+        #criterion2 = AUCMLoss().cuda()
 
-    # optimizer = torch.optim.SGD(model.parameters(), args.lr,
-    #                         momentum=args.momentum,
-    #                         weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                            momentum=args.momentum,
+                            weight_decay=args.weight_decay)
     # Loss = 
     # optimizer = PESG(model.model.parameters(), criterion, lr=0.1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=0.00001)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, 0.1)
     model = torch.nn.DataParallel(model, device_ids=list(range(args.ngpu)))
@@ -148,7 +148,7 @@ def main():
     model = model.cuda()
 
     if args.mask == True:
-        mask_model = sfocus18(args.dataset, num_classes, depth = args.depth, pretrained=False, plus=args.plus)
+        mask_model = sfocus18(args.dataset, num_classes, depth = args.layer_depth, pretrained=False, plus=args.plus)
         mask_model = torch.nn.DataParallel(mask_model, device_ids=list(range(args.ngpu)))
         mask_model = mask_model.cuda()
         # optionally resume from a checkpoint
@@ -190,9 +190,9 @@ def main():
         
         # train for one epoch
         if args.mask == True:
-            train(train_loader, val_loader, test_loader, model, criterion, criterion2, optimizer, epoch, result_dir, mask_model)
+            train(train_loader, val_loader, test_loader, model, criterion, optimizer, epoch, result_dir, mask_model)
         else:
-            train(train_loader, val_loader, test_loader, model, criterion, criterion2, optimizer, epoch, result_dir, PATH, unorm)
+            train(train_loader, val_loader, test_loader, model, criterion, optimizer, epoch, result_dir, PATH, unorm)
 
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
@@ -205,7 +205,7 @@ def main():
         ## wandb updates its log per single epoch ##
         
 
-def train(train_loader,val_loader, test_loader, model, criterion, criterion2, optimizer, epoch, dir, PATH, unorm, mask_model = None):
+def train(train_loader,val_loader, test_loader, model, criterion, optimizer, epoch, dir, PATH, unorm, mask_model = None):
 
     global result_dir
     global probs 
@@ -265,7 +265,7 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
             output, l1, l2, l3, hmap_t, hmaps_f = model(inputs, target)
             # output = model(inputs, parallel_last = False)
             # loss = criterion(output, target)+l1+l2+l3
-            loss = criterion(output, target) + criterion2(sigmoid(output),target)
+            loss = criterion(output, target) #+ criterion2(sigmoid(output),target)
         else:
             output, l1, l2, l3, hmaps_t, hmaps_f, bw, d_main = model(inputs, target)
             # aug_output, _, _, _, hmaps_t_aug, hmaps_f_aug, bw, d = model(augmented_inputs, target)
@@ -281,7 +281,7 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
             # aug_loss3 = hmaps_f.sum() / hmaps_f_original.sum()
 
             # loss = criterion(output, target) + aug_loss1 + (aug_loss2 + aug_loss3) * 0.7
-            loss = criterion(output, target) + criterion2(sigmoid(output),target) + bw
+            loss = criterion(output, target) + bw #+ criterion2(sigmoid(output),target) 
         
             d_score += d_main
 
@@ -291,9 +291,9 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
         top1.update(prec1[0], inputs.size(0))
         top5.update(prec5[0], inputs.size(0))
 
-        # wandb.log({"BW loss": total_bw / cnt,
-        #            "Total loss": losses.val,
-        #            "H-score": d_score / cnt})
+        wandb.log({"BW loss": total_bw / cnt,
+                   "Total loss": losses.val})
+                   #"H-score": d_score / cnt})
 
         
         # compute gradient and do SGD step
@@ -302,16 +302,16 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
         optimizer.step()
         # scheduler.step()
         
-        if i % 2000 == 0 and i != 0:
-            tempk = k
-            tempprobs = probs
-            tempgt = gt
-            prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, dir)
-            prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, dir)
-            k = tempk
-            probs = tempprobs
-            gt = tempgt
-            model.train()
+#         if i % 2000 == 0 and i != 0:
+#             tempk = k
+#             tempprobs = probs
+#             tempgt = gt
+#             prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, dir)
+#             prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, dir)
+#             k = tempk
+#             probs = tempprobs
+#             gt = tempgt
+#             model.train()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -338,11 +338,11 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
     elif args.dataset == 'CheXpert' or args.dataset == 'NIH': 
         auc = roc_auc_score(gt, probs)
         print("Training AUC: {}". format(auc))
-    #     wandb.log({
-    #     "Epoch":epoch,
-    #     "Train loss":losses.avg,
-    #     "AUC":auc,
-    # })   
+        wandb.log({
+        "Epoch":epoch,
+        "Train loss":losses.avg,
+        "Train AUC":auc,
+    })   
     
 def create_binary_mask(heatmap, threshold = 0.6):
     # Grad-CAM 히트맵을 이진 마스크로 변환
@@ -504,11 +504,11 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
             torch.save(model.state_dict(), dir + "/model.pth" )
             
         print("Validation AUC: {}". format(auc))
-        # wandb.log({
-        # "Train loss":losses.avg,
-        # "AUC":auc,
-        # "H-score":d_score / cnt
-        # })
+        wandb.log({
+        "Valid loss":losses.avg,
+        "Valid AUC":auc,
+        #"H-score":d_score / cnt
+        })
         f = open(dir + "/validation_performance.txt", "a")
         f.write(str(auc) + "\n")
         f.close()   
@@ -604,11 +604,11 @@ def test(test_loader, model, criterion, unorm, epoch, PATH, dir):
     elif args.dataset == 'CheXpert' or args.dataset == 'NIH': 
         auc = roc_auc_score(gt, probs)
         print("Test AUC: {}". format(auc))
-        # wandb.log({
-        # "Train loss":losses.avg,
-        # "AUC":auc,
-        # "H-score":d_score / cnt
-        # })
+        wandb.log({
+        "Test loss":losses.avg,
+        "Test AUC":auc,
+        #"H-score":d_score / cnt
+        })
         f = open(dir + "/test_performance.txt", "a")
         f.write(str(auc) + "\n")
         f.close()   

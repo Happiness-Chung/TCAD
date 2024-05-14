@@ -14,7 +14,7 @@ def get_mean_var_classes(name):
     elif name == 'stl10':
        return (0.4467, 0.43980, 0.4066), (0.2603, 0.2565, 0.2712), 10
     if name == 'CheXpert':
-        return 0.485, 0.229, 5
+        return 0.485, 0.229, 10
     if name == 'NIH':
         return (0.485, 0.456, 0.406), (0.229, 0.224, 0.225), 14
     return None
