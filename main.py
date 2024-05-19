@@ -42,14 +42,14 @@ parser.add_argument('--mask', default= False, type=str, help='(2) whether apply 
 parser.add_argument('--ngpu', default= 1, type=int, metavar='G', help='number of gpus to use')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default= 40, type=int, metavar='N',
+parser.add_argument('--epochs', default= 20, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--milestones', type=int, default=[50,100], nargs='+', help='LR decay milestones') #####
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=16, type=int,
+parser.add_argument('-b', '--batch-size', default=32, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -59,7 +59,7 @@ parser.add_argument('--print-freq', '-p', default=100, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default= False, type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument("--seed", type=int, default=1234, metavar='BS', help='input batch size for training (default: 64)')
+parser.add_argument("--seed", type=int, default=1, metavar='BS', help='input batch size for training (default: 64)')
 parser.add_argument("--prefix", default="Result", type=str, required=False, metavar='PFX', help='prefix for logging & checkpoint saving')
 parser.add_argument('--evaluate',default=False, dest='evaluate', action='store_true', help='evaluation only')
 best_prec1 = 0
@@ -133,14 +133,14 @@ def main():
         criterion = torch.nn.BCEWithLogitsLoss().cuda()
         criterion2 = AUCMLoss().cuda()
 
-    # optimizer = torch.optim.SGD(model.parameters(), args.lr,
-    #                         momentum=args.momentum,
-    #                         weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                            momentum=args.momentum,
+                            weight_decay=args.weight_decay)
     # Loss = 
     # optimizer = PESG(model.model.parameters(), criterion, lr=0.1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=0.00001)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, 0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, 0.1)
     model = torch.nn.DataParallel(model, device_ids=list(range(args.ngpu)))
     #model = torch.nn.DataParallel(model).cuda()
     model = model.cuda()
@@ -163,7 +163,7 @@ def main():
     cudnn.benchmark = True
 
     # Data loading code
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=args.workers, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(test_loader, model, criterion, unorm, -1, PATH)
         return
@@ -182,9 +182,9 @@ def main():
     # wandb.watch(model, log='all', log_freq=10)
     for epoch in range(args.start_epoch, args.epochs):
 
-        if epoch == 0:
-            prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
-            prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
+        # if epoch == 0:
+        #     prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
+        #     prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
         
         # train for one epoch
         if args.mask == True:
@@ -193,7 +193,7 @@ def main():
             train(train_loader, val_loader, test_loader, model, criterion, criterion2, optimizer, epoch, result_dir, PATH, unorm)
 
         # evaluate on validation set
-        prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
+        # prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
         prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
         
         # remember best prec@1 and save checkpoint
@@ -201,6 +201,8 @@ def main():
         best_prec1 = max(prec1, best_prec1)
         # scheduler.step()
         ## wandb updates its log per single epoch ##
+
+        torch.save(model.state_dict(), result_dir + "/model.pth" )
         
 
 def train(train_loader,val_loader, test_loader, model, criterion, criterion2, optimizer, epoch, dir, PATH, unorm, mask_model = None):
@@ -217,7 +219,7 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
     top5 = AverageMeter()
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 
@@ -279,7 +281,9 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
             # aug_loss3 = hmaps_f.sum() / hmaps_f_original.sum()
 
             # loss = criterion(output, target) + aug_loss1 + (aug_loss2 + aug_loss3) * 0.7
-            loss = criterion(output, target) + criterion2(sigmoid(output),target) + bw
+            #######################################################################################
+            loss = criterion(output, target) # + l1 + l2 #  bw # + criterion2(sigmoid(output),target)
+            ####################################################################################### 
         
             d_score += d_main
 
@@ -300,16 +304,16 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
         optimizer.step()
         # scheduler.step()
         
-        if i % 2000 == 0 and i != 0:
-            tempk = k
-            tempprobs = probs
-            tempgt = gt
-            prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, dir)
-            prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, dir)
-            k = tempk
-            probs = tempprobs
-            gt = tempgt
-            model.train()
+        # if i % 2000 == 0 and i != 0:
+        #     tempk = k
+        #     tempprobs = probs
+        #     tempgt = gt
+        #     prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, dir)
+        #     prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, dir)
+        #     k = tempk
+        #     probs = tempprobs
+        #     gt = tempgt
+        #     model.train()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -324,7 +328,7 @@ def train(train_loader,val_loader, test_loader, model, criterion, criterion2, op
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                    epoch, i, len(train_loader), batch_time=batch_time,
                    data_time=data_time, loss=losses, top1=top1, top5=top5))
-            print('H-score: ', d_score / cnt)
+            # print('H-score: ', d_score / cnt)
     
     if args.dataset == 'ImageNet':
         wandb.log({
@@ -420,7 +424,7 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
     sigmoid =  nn.Sigmoid()
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 
@@ -449,7 +453,7 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
             loss = criterion(output, target)
         else:
             output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(inputs, target)
-            loss = criterion(output, target)+l1+l2+l3+bw
+            loss = criterion(output, target)+l1+l2 # +l3+bw
             d_score += h
 
         true_overlays = []
@@ -524,7 +528,7 @@ def test(test_loader, model, criterion, unorm, epoch, PATH, dir):
     global k
 
     if args.dataset == 'CheXpert':
-        class_num = 5
+        class_num = 10
     elif args.dataset == 'NIH':
         class_num = 14
 

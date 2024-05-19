@@ -24,17 +24,17 @@ from numpy.core.fromnumeric import mean
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-class ChexpertTrainDataset(Dataset):
+class ChexpertDataset(Dataset):
 
     def __init__(self,transform = None, indices = None):
         
-        csv_path = "C:/Users/hb/Desktop/Data/CheXpert-v1.0-small/labels(former)/selected_train.csv" ####
+        csv_path = "C:/Users/hb/Desktop/Data/CheXpert-v1.0-small/labels(former)/all10.csv" ####
         self.dir = "C:/Users/hb/Desktop/Data/" ####
         self.transform = transform
 
         self.all_data = pd.read_csv(csv_path)
-        # self.selecte_data = self.all_data.iloc[indices, :]
-        self.selecte_data = self.all_data
+        self.selecte_data = self.all_data.iloc[indices, :]
+        # self.selecte_data = self.all_data
         self.class_num = 10
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
