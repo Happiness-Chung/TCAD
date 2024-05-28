@@ -142,7 +142,7 @@ def main():
     # optimizer = PESG(model.model.parameters(), criterion, lr=0.1)
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=0.00001)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, 0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, 0.1)
     model = torch.nn.DataParallel(model, device_ids=list(range(args.ngpu)))
     #model = torch.nn.DataParallel(model).cuda()
     model = model.cuda()
@@ -165,7 +165,7 @@ def main():
     cudnn.benchmark = True
 
     # Data loading code
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=args.workers, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(test_loader, model, criterion, unorm, -1, PATH)
         return
@@ -184,9 +184,9 @@ def main():
     # wandb.watch(model, log='all', log_freq=10)
     for epoch in range(args.start_epoch, args.epochs):
 
-        if epoch == 0:
-            prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
-            prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
+#         if epoch == 0:
+#             prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
+#             prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
         
         # train for one epoch
         if args.mask == True:
@@ -195,7 +195,7 @@ def main():
             train(train_loader, val_loader, test_loader, model, criterion, optimizer, epoch, result_dir, PATH, unorm)
 
         # evaluate on validation set
-        prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
+#         prec1 = validate(val_loader, model, criterion, unorm, epoch, PATH, result_dir)
         prec1 = test(test_loader, model, criterion, unorm, epoch, PATH, result_dir)
         
         # remember best prec@1 and save checkpoint
@@ -451,7 +451,7 @@ def validate(val_loader, model, criterion, unorm, epoch, PATH, dir):
             loss = criterion(output, target)
         else:
             output, l1, l2, l3, hmap_t, hmaps_f, bw, h = model(inputs, target)
-            loss = criterion(output, target)+l1+l2+l3+bw
+            loss = criterion(output, target)+l1+l2 #+l3+bw
             d_score += h
 
         true_overlays = []

@@ -24,16 +24,17 @@ from numpy.core.fromnumeric import mean
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-class ChexpertTrainDataset(Dataset):
+class ChexpertDataset(Dataset):
 
-    def __init__(self,transform = None, train_list= None):
+    def __init__(self,transform = None, indices = None):
         
-        csv_path = "../TCAD_stella/data/CheXpert_v1_small_metadata.csv" ####
+        csv_path = "../TCAD_stella/data/all10.csv" ####
         self.dir = "../TCAD_stella/data/" ####
         self.transform = transform
-        self.train_list = train_list
+        #self.train_list = train_list
         self.df = pd.read_csv(csv_path)
-        self.selecte_data = self.df[self.df['Path'].isin(self.train_list)]
+        #self.selecte_data = self.df[self.df['Path'].isin(self.train_list)]
+        self.selecte_data = self.df.iloc[indices, :]
         self.class_num = 10
         self.all_classes = ['Enlarged Cardiomediastinum', 'Cardiomegaly', 'Lung Opacity', 'Lung Lesion', 'Edema', 'Consolidation', 'Pneumonia', 'Atelectasis', 'Pneumothorax', 'Fracture']
         
@@ -58,7 +59,7 @@ class ChexpertTrainDataset(Dataset):
         row = self.selecte_data.iloc[index, :]
         # img = cv2.imread(self.dir + row['Path'])
         img = pilimg.open(self.dir + row['Path'])
-        label = torch.FloatTensor(row[3:])
+        label = torch.FloatTensor(row[2:])
         gray_img = self.transform(img)
         return torch.cat([gray_img,gray_img,gray_img], dim = 0), label
 
